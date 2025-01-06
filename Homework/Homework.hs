@@ -4,19 +4,9 @@
 {-# LANGUAGE NoGeneralizedNewtypeDeriving #-}
 -- setting the "warn-incomplete-patterns" flag asks GHC to warn you
 -- about possible missing cases in pattern-matching definitions
-{-# OPTIONS_GHC -fwarn-incomplete-patterns -Wno-x-partial #-}
+{-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 
-module Test2
-  ( isNBranching,
-    prune,
-    applyNTimes,
-    gameOver,
-    takeTokens,
-    prettyShow,
-    parseExpression,
-    magicBit,
-  )
-where
+module Homework (choose, simulate, cut, shuffle, riffles, permute, genTree) where
 
 import Types
 
@@ -24,168 +14,86 @@ import Types
 ---------------- DO **NOT** MAKE ANY CHANGES ABOVE THIS LINE --------------------
 ---------------------------------------------------------------------------------
 
----------------------------------------------------------------------------------
--- QUESTION 1
----------------------------------------------------------------------------------
+choose :: (PickingMonad m) => [a] -> m a
+choose xs
+  | null xs = error "empty list"
+  | otherwise = do
+      idx <- pick 0 (length xs - 1)
+      return (xs !! idx)
 
-checkBranch :: Int -> Rose a -> Bool
-checkBranch n (Leaf _) = True
-checkBranch n (Branch children) = length children == n && all (checkBranch n) children
+simulate :: (Monad m) => m Bool -> Integer -> m Integer
+simulate bs n
+  | n <= 0 = return 0
+  | otherwise = do
+      result <- bs
+      rest <- simulate bs (n - 1)
+      return (if result then rest + 1 else rest)
 
-isNBranching :: Int -> Rose a -> Bool
-isNBranching n t = checkBranch n t
+cut :: (PickingMonad m) => [a] -> m ([a], [a])
+cut xs = do
+  let len = length xs
+  i <- pick 0 len
+  return (take i xs, drop i xs)
 
-pruneBranches :: Int -> [Rose a] -> [Rose a]
-pruneBranches n branches = take n branches
+shuffle :: (PickingMonad m) => ([a], [a]) -> m [a]
+shuffle ([], zs) = return zs
+shuffle (ys, []) = return ys
+shuffle (y : ys, z : zs) = do
+  let lenY = length ys + 1
+      lenZ = length zs + 1
+  chooseHead <- pick 1 (lenY + lenZ)
+  if chooseHead <= lenY
+    then (y :) <$> shuffle (ys, z : zs)
+    else (z :) <$> shuffle (y : ys, zs)
 
-prune :: Int -> Rose a -> Rose a
-prune n (Leaf x) = Leaf x
-prune n (Branch children) =
-  let prunedChildren = pruneBranches n children
-      prunedSubtrees = map (prune n) prunedChildren
-   in Branch prunedSubtrees
+riffles :: (PickingMonad m) => ([a] -> m ([a], [a])) -> (([a], [a]) -> m [a]) -> Int -> [a] -> m [a]
+riffles _ _ 0 xs = return xs
+riffles cf sf n xs = do
+  (ys, zs) <- cf xs
+  shuffled <- sf (ys, zs)
+  riffles cf sf (n - 1) shuffled
 
----------------------------------------------------------------------------------
--- QUESTION 2
----------------------------------------------------------------------------------
+permute :: (PickingMonad m) => [a] -> m [a]
+permute [] = return []
+permute (x : xs) = do
+  rest <- permute xs
+  i <- pick 0 (length rest)
+  return (take i rest ++ [x] ++ drop i rest)
 
-applyNTimes :: (Monad m) => m a -> (a -> m a) -> Int -> m [a]
-applyNTimes mx mf n = solve n mx
-  where
-    solve 0 mx = do
-      x <- mx
-      return [x]
-    solve n mx = do
-      x <- mx
-      xs <- solve (n - 1) (mf x)
-      return (x : xs)
+genTree :: (PickingMonad m) => [a] -> m (Bin a)
+genTree [] = error "genTree: empty list"
+genTree [x] = return (L x)
+genTree xs = do
+  shuffled <- shuffleList xs
+  buildTree shuffled
 
----------------------------------------------------------------------------------
--- QUESTION 3
----------------------------------------------------------------------------------
+buildTree :: (PickingMonad m) => [a] -> m (Bin a)
+buildTree [] = error "buildTree: empty list"
+buildTree [x] = return (L x)
+buildTree (x : xs) = do
+  subtree <- buildTree xs
+  insertLeaf x subtree
 
-gameOver :: NimGame Bool
-gameOver = do
-  (firstHeap, secondHeap) <- get
-  let isOver = firstHeap == 0 && secondHeap == 0
-  return isOver
+insertLeaf :: (PickingMonad m) => a -> Bin a -> m (Bin a)
+insertLeaf x (L y) = do
+  choice <- pick 0 1
+  return $ if choice == 0 then B (L x) (L y) else B (L y) (L x)
+insertLeaf x (B l r) = do
+  choice <- pick 0 1
+  if choice == 0
+    then return (B (L x) (B l r))
+    else do
+      newRight <- insertLeaf x r
+      return (B l newRight)
 
-takeTokens :: Int -> Heap -> NimGame ()
-takeTokens n h = do
-  (firstHeap, secondHeap) <- get
-  let newFirstHeap = case h of
-        First -> max 0 (firstHeap - n)
-        Second -> firstHeap
-  let newSecondHeap = case h of
-        First -> secondHeap
-        Second -> max 0 (secondHeap - n)
-  put (newFirstHeap, newSecondHeap)
+shuffleList :: (PickingMonad m) => [a] -> m [a]
+shuffleList [] = return []
+shuffleList xs = do
+  idx <- pick 0 (length xs - 1)
+  let (before, x : after) = splitAt idx xs
+  rest <- shuffleList (before ++ after)
+  return (x : rest)
 
--- example :: NimGame Bool
--- example = do takeTokens 5 First
---              takeTokens 3 Second
---              takeTokens 1 Second
---              gameOver
-
----------------------------------------------------------------------------------
--- QUESTION 4
----------------------------------------------------------------------------------
-
-prettyShow :: Expr -> String
-prettyShow (E e) = foldr (++) "" (map solve e)
-  where
-    solve :: Enclosure -> String
-    solve e
-      | Paren expr <- e = "(" ++ prettyShow expr ++ ")"
-      | Bracket expr <- e = "[" ++ prettyShow expr ++ "]"
-      | Brace expr <- e = "{" ++ prettyShow expr ++ "}"
-
-parseExpression :: Parser Expr
-parseExpression = do
-  enclosures <- many parseEnclosure
-  return (E enclosures)
-
-parseEnclosure :: Parser Enclosure
-parseEnclosure = parseParen <|> parseBracket <|> parseBrace
-
-parseParen :: Parser Enclosure
-parseParen = do
-  char '('
-  expr <- parseExpression
-  char ')'
-  return (Paren expr)
-
-parseBracket :: Parser Enclosure
-parseBracket = do
-  char '['
-  expr <- parseExpression
-  char ']'
-  return (Bracket expr)
-
-parseBrace :: Parser Enclosure
-parseBrace = do
-  char '{'
-  expr <- parseExpression
-  char '}'
-  return (Brace expr)
-
----------------------------------------------------------------------------------
--- QUESTION 5
----------------------------------------------------------------------------------
-
-magicBit :: Cont Int Bool
-magicBit = Cont magicHelper
-
-magicHelper :: (Bool -> Int) -> Int
-magicHelper k = chooseBestBranch k
-
-chooseBestBranch :: (Bool -> Int) -> Int
-chooseBestBranch k =
-  let trueResult = evaluateBranch k True
-      falseResult = evaluateBranch k False
-   in selectBranch trueResult falseResult k
-
-evaluateBranch :: (Bool -> Int) -> Bool -> Int
-evaluateBranch k branch = k branch
-
-selectBranch :: Int -> Int -> (Bool -> Int) -> Int
-selectBranch trueResult falseResult k
-  | trueResult > falseResult = trueResult
-  | otherwise = falseResult
-
--- magicEx1 :: Cont Int Int
--- magicEx1 = do
---   b0 <- magicBit
---   if b0
---     then
---       return 100
---     else
---       return 0
-
--- magicEx2 :: Cont Int Int
--- magicEx2 = do
---   b0 <- magicBit
---   b1 <- magicBit
---   if b0
---     then
---       if b1
---         then return 20
---         else return 10
---     else
---       if b1
---         then return 50
---         else return 30
-
--- magicEx3 :: Cont Int Int
--- magicEx3 = do
---   b1 <- magicBit
---   b2 <- magicBit
---   if b1 && not b2
---     then return 100
---     else return 0
--- magicEx4 :: Cont Int Int
--- magicEx4 = do
---   bits <- replicateM 4 magicBit
---   if all id bits
---     then return 60
---     else return 0
+canopy :: Bin a -> [a]
+canopy (L x) = [x]
+canopy (B l r) = canopy l ++ canopy r
