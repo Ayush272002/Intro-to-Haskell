@@ -30,7 +30,8 @@ import Types
 
 checkBranch :: Int -> Rose a -> Bool
 checkBranch n (Leaf _) = True
-checkBranch n (Branch children) = length children == n && all (checkBranch n) children
+checkBranch n (Branch children) =
+  length children == n && all (checkBranch n) children
 
 isNBranching :: Int -> Rose a -> Bool
 isNBranching n t = checkBranch n t
@@ -82,10 +83,11 @@ takeTokens n h = do
   put (newFirstHeap, newSecondHeap)
 
 -- example :: NimGame Bool
--- example = do takeTokens 5 First
---              takeTokens 3 Second
---              takeTokens 1 Second
---              gameOver
+-- example = do
+--     takeTokens 5 First
+--     takeTokens 3 Second
+--     takeTokens 1 Second
+--     gameOver
 
 ---------------------------------------------------------------------------------
 -- QUESTION 4
@@ -129,59 +131,61 @@ parseBrace = do
   char '}'
   return (Brace expr)
 
--- example :: NimGame Bool
--- example = do takeTokens 5 First
---              takeTokens 3 Second
---              takeTokens 1 Second
---              gameOver
-
 ---------------------------------------------------------------------------------
 -- QUESTION 5
 ---------------------------------------------------------------------------------
 
 magicBit :: Cont Int Bool
-magicBit =
-  Cont
-    ( \k ->
-        let result = maxResult k
-         in result
-    )
+magicBit = Cont magicHelper
 
-maxResult :: (Bool -> Int) -> Int
-maxResult k =
-  let resultIfTrue = k True
-      resultIfFalse = k False
-   in if resultIfTrue > resultIfFalse
-        then resultIfTrue
-        else resultIfFalse
+magicHelper :: (Bool -> Int) -> Int
+magicHelper k = chooseBestBranch k
+
+chooseBestBranch :: (Bool -> Int) -> Int
+chooseBestBranch k =
+  let trueResult = evaluateBranch k True
+      falseResult = evaluateBranch k False
+   in selectBranch trueResult falseResult k
+
+evaluateBranch :: (Bool -> Int) -> Bool -> Int
+evaluateBranch k branch = k branch
+
+selectBranch :: Int -> Int -> (Bool -> Int) -> Int
+selectBranch trueResult falseResult k
+  | trueResult > falseResult = trueResult
+  | otherwise = falseResult
 
 -- magicEx1 :: Cont Int Int
--- magicEx1 = do b0 <- magicBit
---               if b0 then
---                 return 100
---                 else
---                 return 0
+-- magicEx1 = do
+--     b0 <- magicBit
+--     if b0 then
+--         return 100
+--     else
+--         return 0
 
 -- magicEx2 :: Cont Int Int
--- magicEx2 = do b0 <- magicBit
---               b1 <- magicBit
---               if b0
---                 then if b1
---                      then return 20
---                      else return 10
---                 else if b1
---                      then return 50
---                      else return 30
+-- magicEx2 = do
+--     b0 <- magicBit
+--     b1 <- magicBit
+--     if b0
+--     then if b1
+--         then return 20
+--         else return 10
+--     else if b1
+--         then return 50
+--         else return 30
 
 -- magicEx3 :: Cont Int Int
--- magicEx3 = do b1 <- magicBit
---               b2 <- magicBit
---               if b1 && not b2
---                 then return 100
---                 else return 0
+-- magicEx3 = do
+--     b1 <- magicBit
+--     b2 <- magicBit
+--     if b1 && not b2
+--     then return 100
+--     else return 0
 
 -- magicEx4 :: Cont Int Int
--- magicEx4 = do bits <- replicateM 4 magicBit
---               if all id bits
---                 then return 60
---                 else return 0
+-- magicEx4 = do
+--     bits <- replicateM 4 magicBit
+--     if all id bits
+--     then return 60
+--     else return 0
